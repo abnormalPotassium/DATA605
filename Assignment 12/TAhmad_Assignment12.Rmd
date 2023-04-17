@@ -1,0 +1,97 @@
+---
+title: "Assignment 12"
+author: "Taha Ahmad"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r lib import, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(pracma)
+library(glue)
+library(stats)
+library(ggfortify)
+```
+
+### Introduction
+
+Using the “cars” dataset in R, build a linear model for stopping distance as a function of speed and replicate the analysis of your textbook chapter 3 (visualization, quality evaluation of the model, and residual analysis.)
+
+#### Visualization
+
+
+For the initial visualization we plot the dependent variable of distance to the independent variable of speed. There does seem to be a slight linear relationship from this glimpse.
+
+```{r visualization}
+data(cars)
+df <- cars
+df %>%
+  ggplot(aes(x=speed, y= dist)) +
+  geom_point()
+```
+
+#### Generating the Linear Model
+
+
+We utilize R's built in linear model generation to get our linear model below:
+
+```{r model generation}
+df_lm <- lm(dist ~ speed, data = df)
+(df_lm)
+```
+With a y-intercept of -17.579 and a slope of 3.932, we get the regression model of:
+
+$\hat{dist} = 3.932*speed - 17.579$
+
+This is what the line looks visualized on our scatter plot:
+
+```{r model visualization}
+df %>%
+  ggplot(aes(x=speed, y= dist)) +
+  geom_point() +
+  geom_abline(intercept = df_lm$coefficients[1], slope = df_lm$coefficients[2])
+```
+
+#### Evaluating Quality of the Model
+
+
+We use the summary function on the model object in order to get more information on how well the model fits.
+
+```{r model summary}
+summary(df_lm)
+```
+Examining the information regarding the residuals we can determine that the residuals do follow a roughly Gaussian distribution here. This is because the median is close to 0 and both the first and third quartile have close magnitudes. However, some caution should be taken as the minimum and maximum value of the residuals are not that close in magnitude.
+
+Next we can examine the information regarding the coefficients. The standard error we have is about 9 times smaller than the estimate of the speed coefficient, which is indicative of a good model's variability. However, our P value is only significant up to an alpha value of 0.05. Ideally we would have a bigger t value and a smaller P value.
+
+Finally we'll take a look at the goodness of fit with the multiple R-squared value. At 0.6511 we know that the model accounts for 65.11% of variation in speed based on the stopping distance. Which is a good start, but not great for a predictive model.
+
+#### Residual Analysis of the Model
+
+
+Let us take a look at the individual residuals and what they tell us with the model.
+
+```{r residual analysis 1}
+ggplot(df_lm,aes(x=.fitted,y=.resid)) +
+  geom_point() +
+  geom_hline(yintercept = 0)
+```
+Looking at the residual plot we can see that the data starts out distributed well. However, as we move towards the right the magnitude of the residuals seems to increase. There are also more residuals underneath the line rather than above. Yet, many of the residuals above the line have a high magnitude. These deviations mean that the model is not a great fit for our data.
+
+
+```{r residual analysis 2}
+ggplot(df_lm,aes(sample =.resid)) +
+  geom_qq() +
+  geom_qq_line()
+```
+Generating a qq plot of our residuals reinforces the idea that our residuals do not seem to be normally distributed, and thus our model is not a great fit for the data. Both the lower and upper residual data deviates from normality. 
+
+```{r residual analysis 3}
+autoplot(df_lm)
+```
