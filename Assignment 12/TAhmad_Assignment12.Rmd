@@ -3,8 +3,8 @@ title: "Assignment 12"
 author: "Taha Ahmad"
 date: "`r Sys.Date()`"
 output:
-  pdf_document: default
   html_document: default
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -21,77 +21,168 @@ library(ggfortify)
 
 ### Introduction
 
-Using the “cars” dataset in R, build a linear model for stopping distance as a function of speed and replicate the analysis of your textbook chapter 3 (visualization, quality evaluation of the model, and residual analysis.)
+The who.csv dataset contains real-world data from 2008. The variables included follow.
+Country: name of the country
+LifeExp: average life expectancy for the country in years
+InfantSurvival: proportion of those surviving to one year or more
+Under5Survival: proportion of those surviving to five years or more
+TBFree: proportion of the population without TB.
+PropMD: proportion of the population who are MDs
+PropRN: proportion of the population who are RNs
+PersExp: mean personal expenditures on healthcare in US dollars at average exchange rate
+GovtExp: mean government expenditures per capita on healthcare, US dollars at average exchange rate
+TotExp: sum of personal and government expenditures.
 
-#### Visualization
+#### Importing Data
+
+```{r data import}
+uri = r"(https://github.com/alu-potato/DATA605/raw/main/Assignment%2012/assignment_12_who.csv)"
+who_df <- read_csv(uri, show_col_types = FALSE)
+head(who_df)
+```
 
 
-For the initial visualization we plot the dependent variable of distance to the independent variable of speed. There does seem to be a slight linear relationship from this glimpse.
+#### Simple Linear Regression 1
 
-```{r visualization}
-data(cars)
-df <- cars
-df %>%
-  ggplot(aes(x=speed, y= dist)) +
+Provide a scatterplot of LifeExp~TotExp, and run simple linear regression. Do not transform the
+variables. Provide and interpret the F statistics, R^2, standard error,and p-values only. Discuss
+whether the assumptions of simple linear regression met.
+
+##### Provide a scatterplot of LifeExp~TotExp
+
+```{r visualization 1}
+who_df %>%
+  ggplot(aes(x=TotExp, y= LifeExp)) +
   geom_point()
 ```
+\
+There does seem to be a relationship here, however it is definitely not a simple linear relationship.
 
-#### Generating the Linear Model
+##### Run A Simple Linear Regression
 
-
-We utilize R's built in linear model generation to get our linear model below:
-
-```{r model generation}
-df_lm <- lm(dist ~ speed, data = df)
-(df_lm)
+```{r model generation 1}
+who_df_lm1 <- lm(LifeExp ~ TotExp, data = who_df)
+summary(who_df_lm1)
 ```
-With a y-intercept of -17.579 and a slope of 3.932, we get the regression model of:
+##### Summary Interpretation
 
-$\hat{dist} = 3.932*speed - 17.579$
+Overall we end up with an F-statistic of 65.26 which computes into a p-value of 7.714e-14. This surprisingly means that our regression model allows for prediction models that fit better than random chance almost all of the time. Since this is a simple linear regression model, the p-value is also shared with the coefficient of TotExp itself.
 
-This is what the line looks visualized on our scatter plot:
+However, just because we have low p-values doesn't mean the model is a good fit. Our R^2 of 0.2577 tells us that this model will only account for about 26% of variation within the data which is quite a wide amount of variation not considered. Additionally, our residual standard error of 9.371 tells us that there is a standard deviation of almost 9 years between the predictions and the actual data! 9 years of life expectancy variation is a huge amount.
 
-```{r model visualization}
-df %>%
-  ggplot(aes(x=speed, y= dist)) +
-  geom_point() +
-  geom_abline(intercept = df_lm$coefficients[1], slope = df_lm$coefficients[2])
-```
+Examining the information regarding the residuals we can determine that the residuals do not follow a roughly Gaussian distribution here. This is because the median is not close to 0 years. Additionally, the first and third quartile are not close in magnitudes. Finally, the minimum and maximum residuals are not close in magnitude and the minimum is a massive outlier. We have to remember that we are keeping track in years so even a difference of 1 or 2 is a large amount. Thus we will say that the assumption of normality has been violated.
 
-#### Evaluating Quality of the Model
-
-
-We use the summary function on the model object in order to get more information on how well the model fits.
-
-```{r model summary}
-summary(df_lm)
-```
-Examining the information regarding the residuals we can determine that the residuals do follow a roughly Gaussian distribution here. This is because the median is close to 0 and both the first and third quartile have close magnitudes. However, some caution should be taken as the minimum and maximum value of the residuals are not that close in magnitude.
-
-Next we can examine the information regarding the coefficients. The standard error we have is about 9 times smaller than the estimate of the speed coefficient, which is indicative of a good model's variability. However, our P value is only significant up to an alpha value of 0.05. Ideally we would have a bigger t value and a smaller P value.
-
-Finally we'll take a look at the goodness of fit with the multiple R-squared value. At 0.6511 we know that the model accounts for 65.11% of variation in speed based on the stopping distance. Which is a good start, but not great for a predictive model.
-
-#### Residual Analysis of the Model
-
-
-Let us take a look at the individual residuals and what they tell us with the model.
+##### Residual Plot Interpretation
 
 ```{r residual analysis 1}
-ggplot(df_lm,aes(x=.fitted,y=.resid)) +
-  geom_point() +
-  geom_hline(yintercept = 0)
+autoplot(who_df_lm1)
 ```
-Looking at the residual plot we can see that the data starts out distributed well. However, as we move towards the right the magnitude of the residuals seems to increase. There are also more residuals underneath the line rather than above. Yet, many of the residuals above the line have a high magnitude. These deviations mean that the model is not a great fit for our data.
 
+By looking at the scatterplot above we know that linearity is violated as well, there is a clear nonlinear trend in the residuals vs fitted graph. Additionally we can confirm that normality is violated in the Q-Q plot. Thus, our assumptions of simple linear regressions are not met.
+
+#### Simple Linear Regression 2
+
+Raise life expectancy to the 4.6 power (i.e., LifeExp^4.6). Raise total expenditures to the 0.06
+power (nearly a log transform, TotExp^.06). Plot LifeExp^4.6 as a function of TotExp^.06, and r
+re-run the simple regression model using the transformed variables. Provide and interpret the F
+statistics, R^2, standard error, and p-values. Which model is "better?"
+
+##### Provide a scatterplot of LifeExp^4.6 ~ TotExp^.06
+
+```{r visualization 2}
+who_df <- who_df %>%
+  mutate(TotExp.06 = TotExp^.06, LifeExp4.6 = LifeExp^4.6)
+
+who_df %>%
+  ggplot(aes(x=TotExp.06, y= LifeExp4.6)) +
+  geom_point()
+```
+\
+We now have a much more linear relationship with the transformations.
+
+##### Run A Simple Linear Regression
+
+```{r model generation 2}
+who_df_lm2 <- lm(LifeExp4.6 ~ TotExp.06, data = who_df)
+summary(who_df_lm2)
+```
+
+##### Summary Interpretation
+
+Overall we end up with an F-statistic of 507.7 which computes into a p-value of <2.2e-16. This means that our regression model allows for prediction models that fit better than random chance almost all of the time. This is better than our previously computed model. Since this is a simple linear regression model, the p-value is also shared with the coefficient of TotExp itself.
+
+Our R^2 of 0.7298 tells us that this model will account for about 73% of variation within the data which is much better than what we obtained with the previous model. Additionally, our residual standard error of 90,490,000 tells us that there is still typically a large gulf between the predicted variable of transformed life expectancy and the actual values. I would say this is slightly more acceptable in this model as we are now working with years^4.6 which inflates the values.
+
+Examining the information regarding the residuals we can determine that the residuals do follow a roughly Gaussian distribution here. The median is relatively close to 0 based on the magnitude we are working with. Additionally, the first and third quartile are close in magnitudes. Finally, the minimum and maximum residuals are relatively closer in magnitude. This a change compared to our original model.
+
+##### Residual Plot Interpretation
 
 ```{r residual analysis 2}
-ggplot(df_lm,aes(sample =.resid)) +
-  geom_qq() +
-  geom_qq_line()
+autoplot(who_df_lm2)
 ```
-Generating a qq plot of our residuals reinforces the idea that our residuals do not seem to be normally distributed, and thus our model is not a great fit for the data. Both the lower and upper residual data deviates from normality. 
+
+Looking at the residuals vs fitted graph, the graph seems to slightly dip near the middle, but overall the trend is linear. Additionally we can confirm that the residuals are more normal in the Q-Q plot, despite the values around the extremes still dipping. Thus, our assumptions of simple linear regressions are met here.
+
+Overall, this model seems to be much more appropriate for predictions than our previous model.
+
+#### Simple Linear Regression 3
+
+Using the results from 3, forecast life expectancy when TotExp^.06 =1.5. Then forecast life
+expectancy when TotExp^.06=2.5.
+
+##### Predictions
+
+```{r prediction 1}
+test_df1 <- tibble(TotExp.06 = c(1.5,2.5))
+
+(predict(who_df_lm2,test_df1)^(1/4.6))
+```
+If TotExp^.06 = 1.5, then life expectancy is predicted to be 63.31 years.
+
+If TotExp^.06 = 2.5, then life expectancy is predicted to be 86.51 years.
+
+#### Multiple Linear Regression 1
+
+Build the following multiple regression model and interpret the F Statistics, R^2, standard error,
+and p-values. How good is the model?
+
+LifeExp = b0+b1 x PropMd + b2 x TotExp +b3 x PropMD x TotExp
+
+##### Run A Multiple Linear Regression
+
+```{r model generation 3}
+who_df_lm3 <- lm(LifeExp ~ PropMD + TotExp + PropMD * TotExp, data = who_df)
+summary(who_df_lm3)
+```
+
+##### Summary Interpretation
+
+Overall we end up with an F-statistic of 34.49 which computes into a p-value of <2.2e-16. This means that our regression model allows for prediction models that fit better than random chance almost all of the time. Since this is a multiple linear regression model, the p-values are different for each variable. We can see that all of our variables have P values better than an alpha of 0.01, which means they should be good predictors for our model. TotExp ends up having the lowest P value and thus contributes the most to the model.
+
+However, just because we have low p-values doesn't mean the model is a good fit. Our Adjusted R^2 of 0.3471 tells us that this model will only account for about 35% of variation within the data which is quite a wide amount of variation not considered. Additionally, our residual standard error of 8.765 tells us that there is a standard deviation of almost 9 years between the predictions and the actual data! 9 years of life expectancy variation is a huge amount.
+
+Examining the information regarding the residuals we can determine that the residuals do follow a roughly Gaussian distribution here. The median is close to 0 years. Additionally, the first and third quartile are close in magnitudes. However, the minimum and maximum residuals are not close in magnitude and the minimum is a massive outlier. Yet we can consider this to be acceptable as even normal ranges will have outliers.
+
+##### Residual Plot Interpretation
 
 ```{r residual analysis 3}
-autoplot(df_lm)
+autoplot(who_df_lm3)
 ```
+
+By looking at the scatterplot above we know that linearity is violated as well, there is a clear nonlinear trend in the residuals vs fitted graph. However, normality seems to be present in the Q-Q plot besides the outliers.
+
+This model is slightly better than our first model based on the information analyzed, however the second model's transformations provided for a better fit and satisfied our assumptions better. This just goes to show that with smart transformation, a simple linear regression may be more useful than a multiple linear model with less thought put into it.
+
+#### Multiple Linear Regression 2
+
+Forecast LifeExp when PropMD=.03 and TotExp = 14. Does this forecast seem realistic? Why
+or why not?
+
+```{r prediction 2}
+test_df2 <- tibble(TotExp = c(14),
+                   PropMD = c(.03),)
+
+(predict(who_df_lm3,test_df2))
+```
+Using our multiple linear regression model with a TotExp of 14 and a PropMD of .03 we get a life expectancy of 107.70 years. This forecast is not realistic for multiple reasons. First of all, an average life expectancy that high is simply too much higher than the average human life expectancy. Second, 3% of the population being medical doctors is an unrealistically high proportion of the population. Finally, a total expenditure of just 14 per capita would doubly so not make sense with such a high amount of doctors amongst the populace. As training doctors is expensive and so is having them operate.
+
