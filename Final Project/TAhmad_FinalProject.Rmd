@@ -1,0 +1,595 @@
+---
+title: "Final Project"
+author: "Taha Ahmad"
+date: '`r Sys.Date()`'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r lib import, message=FALSE}
+library(tidyverse)
+library(pracma)
+library(stats)
+library(glue)
+library(GGally)
+library(matrixcalc)
+library(MASS)
+library(ggfortify)
+library(caret)
+select <- dplyr::select
+set.seed(1337)
+```
+
+# Problem 1
+
+## Density Generation
+
+### Probability Density 1: X \~ Gamma.
+
+Using R, generate a random variable X that has 10,000 random Gamma pdf values. A Gamma pdf is completely describe by n (a size parameter) and lambda ($\lambda$ , a shape parameter). Choose any n greater 3 and an expected value ($\lambda$) between 2 and 10 (you choose).
+
+```{r}
+n <- 4
+lambda <- 2
+ss <- 10000
+
+X <- rgamma(ss, n, lambda)
+hist(X)
+```
+
+### Probability Density 2: Y \~ Sum of Exponentials.
+
+Then generate 10,000 observations from the sum of n exponential pdfs with rate/shape parameter ($\lambda$). The n and $\lambda$ must be the same as in the previous case. (e.g., mysum = rexp(10000, $\lambda$) + rexp(10000, $\lambda$) + ...)
+
+```{r}
+Y <- rexp(ss, lambda) + rexp(ss, lambda) + rexp(ss, lambda) + rexp(ss, lambda)
+hist(Y)
+```
+
+### Probability Density 3: Z \~ Exponential.
+
+Then generate 10,000 observations from a single exponential pdf with rate/shape parameter ($\lambda$).
+
+```{r}
+Z <- rexp(ss, lambda)
+hist(Z)
+```
+
+## Summary Statistic Calculation
+
+### Empirical
+
+Calculate the empirical expected value (means) and variances of all three pdfs.
+
+```{r}
+glue("For the distribution X: Our expected value is {prettyNum(mean(X))} and our variance is {prettyNum(var(X))}", 
+     "\n For the distribution Y: Our expected value is {prettyNum(mean(Y))} and our variance is {prettyNum(var(Y))}",
+     "\n For the distribution Z: Our expected value is {prettyNum(mean(Z))} and our variance is {prettyNum(var(Z))}")
+```
+
+### Calculated
+
+Using calculus, calculate the expected value and variance of the Gamma pdf (X).
+
+```{r}
+# Gamma PDF equation multiplied by x integrated from 0 to infinity provides us with the expected value.
+integrand <- function(x) x * dgamma(x, n, lambda)
+expected_value_X <- integrate(integrand, lower = 0, upper = Inf)$value
+
+# Gamma PDF equation multiplied by the square of x with the previous expected value subtracted integrated from 0 to infinity provides us with the variance.
+integrand <- function(x) (x - expected_value_X)^2 * dgamma(x, n, lambda)
+variance_X <- integrate(integrand, lower = 0, upper = Inf)$value
+
+glue("For the distribution X through calculus: Our expected value is {prettyNum(expected_value_X)} and our variance is {prettyNum(variance_X)}")
+```
+
+Using the moment generating function for exponentials, calculate the expected value of the single exponential (Z) and the sum of exponentials (Y).
+
+```{r}
+# We have the moment generating function for exponentials here
+mgf_Z <- expression(lambda / (lambda - x))
+
+# The first derivative of the mgf of the exponential distribution will provide us with the expected value if evaluated at 0
+d_mgf_Z <- D(mgf_Z,'x')
+
+# Expected value of an exponential distribution
+expected_value_Z <- eval(d_mgf_Z,list(x=0))
+
+# The MGF of a sum of exponential distributions becomes the product of each mgf, giving us the equation below.
+mgf_Y <- expression((lambda / (lambda - x))^n)
+
+# Then we just derive the function and evaluate it at 0 to get the expected value
+d_mgf_Y <- D(mgf_Y,'x')
+expected_value_Y <- eval(d_mgf_Y,list(x=0))
+
+glue("For the distribution Y through the MGF: Our expected value is {prettyNum(expected_value_Y)}",
+     "\n For the distribution Z through the MGF: Our expected value is {prettyNum(expected_value_Z)}")
+```
+
+## Conditional Probabilities
+
+### Empirical
+
+For pdf Z (the exponential), calculate empirically probabilities a through c.
+
+-   a. $P(Z>\lambda|Z>\lambda/2)$
+-   b. $P(Z>2\lambda|Z>\lambda)$
+-   c. $P(Z>3\lambda|Z>\lambda)$
+
+$$
+P(A|B) = \frac {P(A \cup B)}{P(B)}
+$$
+
+```{r}
+# We'll utilize the conditional probability formula to calculate conditional probabilities here.
+p_a <- mean(Z > lambda & Z > lambda / 2) / (mean(Z > lambda / 2))
+p_b <- mean(Z > 2*lambda & Z > lambda) / (mean(Z > lambda ))
+p_c <- mean(Z > 3*lambda & Z > lambda) / (mean(Z > lambda ))
+
+glue("For a our probability is: {prettyNum(p_a)}",
+     "\n For b our probability is {prettyNum(p_b)}",
+     "\n for c our probability is {prettyNum(p_c)}")
+```
+
+### Calculated
+
+Then evaluate through calculus whether the memoryless property holds.
+
+To check if the memoryless property holds for the exponential distribution, we need to verify whether $P(Z > b + a | Z > a) = P(Z > b)$ for all $a,b > 0$.
+
+Our first step is simplyifying this equation based on how we know conditional probability is defined to get:
+
+$$
+P(Z > a + b) = P(Z > a)*P(Z > b)
+$$
+We can then prove this through calculus using R below:
+
+```{r}
+# define the PDF of the exponential distribution with rate lambda
+pdf <- function(x, lambda) exp(-x/lambda)/lambda
+
+# randomly generating our a and b to be used, repeated use of this code block will show regardless of a and b the equation is satisfied
+a <- randi(100)
+b <- randi(100)
+
+# If we integrate the PDF from either a or b to infinity then we can find the probability that there will be a or b additional values over any given Z. These are our P(Z > a) and P(Z > b).
+p_a2 <- integrate(pdf, a, Inf, lambda)$value
+p_b2 <- integrate(pdf, b, Inf, lambda)$value
+
+# We can get the right hand side of our equation above by multiplying these two probabilities.
+rhs <- p_a2 * p_b2
+
+# If we integrate the PDF from the combined a + b to infinity we get the left hand side of our equation.
+p_ab <- integrate(pdf, a + b, Inf, lambda)$value
+
+# compare the two sides
+lhs_simp <- signif(p_ab,3)
+rhs_simp <- signif(rhs, 3)
+
+glue("P(Z > a + b) = {prettyNum(lhs_simp)} = {prettyNum(rhs_simp)} = P(Z > a)*P(Z > b)",
+     "\n The two sides of the equation {ifelse(prettyNum(lhs_simp) == prettyNum(rhs_simp), 'match', 'differ')} which means the memoryless property {ifelse(prettyNum(lhs_simp) == prettyNum(rhs_simp), 'holds', 'breaks')}")
+```
+
+
+### Probability Table
+
+#### Building the Table
+
+Loosely investigate whether $P(Y,Z) = P(Y)*P(Z)$ by building a table with quartiles and evaluating the marginal and joint probabilities.
+
+Following our table we created below in R, the most likely scenario is that $P(Y,Z) = P(Y)*P(Z)$. I say this because all of the marginal probabilities being very close to 0.25 which is the probability of the individual distributions per quartile while all of the joint probabilities are close to 0.0625 which is equivalent to both $P(Y)*P(Z)$ and $P(Y,Z)$. Loosely satisfying our condition for independence.
+
+```{r}
+# First we cut our distributions into their quantile groupings
+cut_Y <- cut(Y, breaks = quantile(Y), include.lowest = TRUE)
+levels(cut_Y) <- c("1st Quartile Y", "2nd Quartile Y", "3rd Quartile Y", "4th Quartile Y")
+
+cut_Z <- cut(Z, breaks = quantile(Z), include.lowest = TRUE)
+levels(cut_Z) <- c("1st Quartile Z", "2nd Quartile Z", "3rd Quartile Z", "4th Quartile Z")
+
+# Then we sample for each combination 10,000 times without replacement to build our joint probabilities
+combined_instances <- paste(sample(cut_Z, ss, replace = TRUE), sample(cut_Y, ss, replace = TRUE))
+
+# We convert these sample counts from a factor vector to a probability table
+instance_counts_matrix <- matrix(table(combined_instances), ncol = 4)
+instance_counts <- prop.table(instance_counts_matrix)
+
+# We then convert the probability table into a dataframe giving it Sum columns and rows
+df <- as.data.frame(instance_counts) %>%
+  mutate(Sum = rowSums(across(where(is.numeric)))) %>%
+  bind_rows(summarise(.,across(where(is.numeric), sum)))
+
+# Finally we pretty up our dataframe by adding the column and row names
+colnames(df) <- c("1st Quartile Y", "2nd Quartile Y", "3rd Quartile Y", "4th Quartile Y", "Sum")
+rownames(df) <- c("1st Quartile Z", "2nd Quartile Z", "3rd Quartile Z", "4th Quartile Z", "Sum")
+knitr::kable(df)
+```
+
+#### Evaluating the Table
+
+Check to see if independence holds by using Fisher’s Exact Test and the Chi Square Test.  
+What is the difference between the two? Which is most appropriate?
+
+The biggest difference between Fisher's Exact Test and the Chi Square Test is that Fisher's Exact Test does not make assumptions about the data coming from random samples and is thus specialized in data that has low sample sizes and counts. However, since Fisher's Exact Test does not make any assumptions it is also very computationally expensive to run. With our contingency matrix we are not able to run a true Fisher's Test in R because our counts are too high to compute, instead we must use limited Monte Carlo simulations for our p-value. Combined with the fact that our data is randomly sampled, in this scenario the Chi Square Test is the more appropriate test.
+
+Independence holds based on the simulated Fisher's Exact Test, we end up with a p-value of 0.6261, which is a fairly large p-value indicating that any relationship between the two variables is likely due to random chance.
+
+```{r}
+fisher.test(instance_counts_matrix, simulate.p.value = TRUE, B = 10000)
+```
+Independence holds based on the Chi Square Test as well, we end up with a p-value of 0.6276, which is a fairly large p-value indicating that any relationship between the two variables is likely due to random chance.
+
+```{r}
+chisq.test(instance_counts_matrix)
+```
+
+
+# Problem 2
+
+You are to register for Kaggle.com (free) and compete in the House Prices: Advanced Regression Techniques competition.  https://www.kaggle.com/c/house-prices-advanced-regression-techniques .
+
+## Loading the Data
+
+```{r}
+train_file <- r"(house-prices-advanced-regression-techniques/train.csv)"
+test_file <- r"(house-prices-advanced-regression-techniques/test.csv)"
+
+df_train <- read_csv(train_file, show_col_types = FALSE)
+df_test <- read_csv(test_file, show_col_types = FALSE)
+```
+
+
+## Exploratory Data Analysis
+
+Provide univariate descriptive statistics and appropriate plots for the training data set.
+
+Looking at descriptive statistics of our subset we have:
+
+- The target variable of sale price being slightly rightward skewed with a mean of $180,921 while having a median of $163,000.
+
+- The variable LotArea having a surprising minimum of 1300 square feet for a house, while also containing an egregious outlier of a 215,245 square foot house.
+
+- The variables OverallQual and OverallCond seem to be very clumped up near the median and mean as the IQR of both of these is 2 or less.
+
+- The variable BedroomAbvGr tells us with its minimum that some homes do not have any bedrooms above the basement level. The distribution is once more clustered tight around the median with an IQR of 1.
+
+- The variable GarageArea seems to be normally distributed with some outliers having a median of 480 square footage of garage area and a mean of 473.
+
+```{r}
+# First we take a subset of variables that we will potentially want to use for our regression model after analyzing the column descriptions, including factorizing the categorical variable of street.
+df_train_subset <- df_train %>%
+  select(SalePrice, LotArea, Street, OverallQual, OverallCond, BedroomAbvGr, GarageArea) %>%
+  mutate_at(vars(Street), factor)
+
+# Afterwards we take a look at the summary statistics of our columns
+df_train_subset %>%
+  summary()
+```
+Our first plot intendeds to glean more insight into the difference that street type has on housing price despite the small amount of houses with gravel streets. Although the median of paved roads is higher and there are many more outliers on sales prices, the interquartile range between the two is still inline with each other. So there shouldn't be a significant difference leading to us using this factor in our regression model.
+
+```{r}
+df_train_subset %>%
+  ggplot(aes(x=Street,y=SalePrice)) +
+  geom_boxplot() +
+  ggtitle("Sale Price Based on Street Type") +
+  scale_y_continuous(labels = scales::label_number())
+```
+Next we make a scatter plot with sales price based on the lot area that a house has. Most of the data seems to be going into a very sharp slope upward as LotArea increases. However, there are quite a few outliers to the right where although their lot area is large their sales price is lower than the median house. By plotting a regression line to this graph we can see the outliers area a serious problem for us. They bring down where the regression line intuitively should be from the majority of the points by about 60 degrees. We will want to remove these for our model.
+
+```{r}
+df_train_subset %>%
+  ggplot(aes(x=LotArea,y=SalePrice)) +
+  geom_jitter(color = 'blue', alpha=0.2) +
+  ggtitle("Sale Price Based on Lot Area") +
+  scale_y_continuous(labels = scales::label_number()) +
+  stat_smooth(method = "lm", formula = y ~ x, geom = "smooth")
+
+# We remove outliers that are 3 standard deviations about the mean for lot area
+df_train_subset <- df_train_subset %>% 
+  mutate(across(
+    LotArea,
+    ~ ifelse(
+      abs(as.numeric(scale(.x))) > 3,
+      NA, 
+      .x
+    )
+  ))
+
+```
+With our outliers removed we have a much more fitting graph to our regression line.
+
+```{r}
+df_train_subset %>%
+  ggplot(aes(x=LotArea,y=SalePrice)) +
+  geom_jitter(color = 'blue', alpha=0.2, na.rm = TRUE) +
+  ggtitle("Sale Price Based on Lot Area") +
+  scale_y_continuous(labels = scales::label_number()) +
+  stat_smooth(method = "lm", formula = y ~ x, geom = "smooth", na.rm = TRUE)
+```
+
+Finally we'll take a look at one of the distributions that might be skewed for the variable of GarageArea.
+Looking at the histogram presents us with the result that there are quite a few outliers rightward, however the floor effect of not being able to have less than 0 garage area manages to counteract these outliers. It actually might be best to leave this distribution as it is because of this.
+
+```{r}
+df_train_subset %>%
+  ggplot(aes(x=GarageArea)) +
+  geom_histogram(bins = 50) +
+  ggtitle("Distribution of Garage Area in SQ FT")
+```
+
+
+Provide a scatterplot matrix for at least two of the independent variables and the dependent variable.
+
+We create a scatterplot matrix from the dependent variable of SalePrice and the independent variables of OverallQual, OverallCond, and GarageArea. From this scatterplot matrix we can intuit that the garage area has the highest correlation with sales price out of these variables based on the scatter plot. However, it also seems to have a decent amount of correlation with OverallQual. This means we might run into colinearity issues if using both variables in our regression model. Meanwhile, OverallCond doesn't seem to have much of a correlation with any variables except OverallQual.
+
+```{r}
+df_train_subset %>%
+  select(SalePrice,OverallQual,OverallCond, GarageArea) %>%
+  pairs()
+```
+
+
+Derive a correlation matrix for any three quantitative variables in the dataset.
+
+We create a correlation matrix with the quantitative variables of LotArea, BedroomAbvGr, and GarageArea. Our correlation matrix shows there is for the most part only minor correlation between these variables. Our highest correlation being that between the LotArea and the GarageArea at 0.316. There is almost no correlation between the GarageArea and the amount of above ground bedrooms though at 0.07.
+
+```{r}
+(corr_mat <- df_train_subset %>%
+  select(LotArea, BedroomAbvGr, GarageArea) %>% 
+  na.omit() %>%
+  cor())
+```
+
+Test the hypotheses that the correlations between each pairwise set of variables is 0 and provide an 80% confidence interval.  Discuss the meaning of your analysis. Would you be worried about familywise error? Why or why not?
+
+For our correlation test between LotArea and BedroomAbvGr we are 80% confident that the true correlation between these variables is between 0.224 and 0.287. Which means we reject our null hypothesis that the correlation between each set of variable is 0. Our confidence interval means that if we were to randomly sample from our data to find the correlation we would obtain a correlation between those values 80% of the time. Even though our confidence interval is fairly lax at 80%, I am not worried about a familywise error occuring where we accidentally reject the null hypothesis because our confidence interval is not close to 0 and our p-value is very low. 
+
+```{r}
+cor.test(~ LotArea + BedroomAbvGr, data = df_train_subset, conf.level = 0.8)
+```
+
+For our correlation test between LotArea and GarageArea, we are 80% confident that the true correlation between these variables is between 0.286 and 0.346. Which means we reject our null hypothesis that the correlation between each set of variable is 0. Our confidence interval means that if we were to randomly sample from our data to find the correlation we would obtain a correlation between those values 80% of the time. Even though our confidence interval is fairly lax at 80%, I am not worried about a familywise error occuring where we accidentally reject the null hypothesis because our confidence interval is not close to 0 and our p-value is very low. 
+
+```{r}
+cor.test(~ LotArea + GarageArea, data = df_train_subset, conf.level = 0.8)
+```
+
+For our correlation test between BedroomAbvGr and GarageArea, we are 80% confident that the true correlation between these variables is between 0.032 and 0.099. Which means we reject our null hypothesis that the correlation between each set of variable is 0. Our confidence interval means that if we were to randomly sample from our data to find the correlation we would obtain a correlation between those values 80% of the time. Unlike the other correlation tests, I am worried about a familywise error occuring here where we accidentally reject the null hypothesis because our confidence interval is close to 0 and our p-value is still statistically significant but getting higher.
+
+```{r}
+cor.test(~ BedroomAbvGr + GarageArea, data = df_train_subset, conf.level = 0.8)
+```
+
+## Matrix Operations
+
+Invert your correlation matrix from above. (This is known as the precision matrix and contains variance inflation factors on the diagonal.)
+
+```{r}
+(prec_mat <- inv(corr_mat))
+```
+
+Multiply the correlation matrix by the precision matrix, and then multiply the precision matrix by the correlation matrix. 
+
+In both cases here we end up getting the identity matrix.
+
+```{r}
+(corr_mat %*% prec_mat)
+(prec_mat %*% corr_mat)
+```
+
+Conduct LU decomposition on the matrix.  
+
+```{r}
+lu.decomposition(corr_mat)
+```
+
+## Distribution Shifting
+
+Many times, it makes sense to fit a closed form distribution to data.  Select a variable in the Kaggle.com training dataset that is skewed to the right, shift it so that the minimum value is absolutely above zero if necessary.
+
+Despite removing outliers in our LotArea variable, we still have skewing to the right as seen in the below histogram.
+
+```{r}
+df_train_subset %>%
+  ggplot(aes(x=LotArea)) +
+  geom_histogram(bins = 50, na.rm = TRUE) +
+  ggtitle("Distribution of Lot Area in SQ FT")
+```
+
+Then load the MASS package and run fitdistr to fit an exponential probability density function.  (See  https://stat.ethz.ch/R-manual/R-devel/library/MASS/html/fitdistr.html ).  
+
+```{r}
+fit <- df_train_subset %>%
+  select(LotArea) %>%
+  na.omit() %>%
+  pull() %>%
+  fitdistr("exponential")
+
+glue("The optimal lambda for an exponential probability density function to fit our variable LotArea would be {fit$estimate}")
+```
+
+Find the optimal value of $\lambda$ for this distribution, and then take 1000 samples from this exponential distribution using this value (e.g., rexp(1000, $\lambda$)).  Plot a histogram and compare it with a histogram of your original variable.
+
+Our simulated exponential distribution of LotArea is extremely skewed to the right compared to our original data. This is to be expected of an exponential distribution There are much higher outliers in the exponential distribution as well, these mirror the outliers that we removed after exploring our data. One thing to note is that the exponential distribution is much more distributed as compared to the original data, the original data is more clumped together and has a higher peak.
+
+```{r}
+fit_exp <- rexp(1000, fit$estimate)
+par(mfrow=c(2,1))
+fit_exp %>%
+  as.data.frame() %>%
+  ggplot(., aes(x= .)) +
+  geom_histogram(bins = 50, na.rm = TRUE) +
+  ggtitle("Simulated Exponential Distribution of Lot Area") +
+  ylim(c(0,200))
+df_train_subset %>%
+  ggplot(aes(x=LotArea)) +
+  geom_histogram(bins = 50, na.rm = TRUE) +
+  ggtitle("Distribution of Lot Area in SQ FT")
+```
+
+Using the exponential pdf, find the 5th and 95th percentiles using the cumulative distribution function (CDF).
+
+To find percentiles from the CDF all we have to do is solve for the percentile we are looking for:
+
+$$
+\begin{aligned}
+f(x) = 1 - e^{-\lambda x} \\
+0.05 = 1 - e^{-\lambda x} \\
+0.95 = e^{-\lambda x} \\
+-ln(0.95) = -\lambda x \\
+x = (-ln(0.95))/\lambda 
+\end{aligned}
+$$
+For the 95th percentile we just need to replace 0.95 with 0.05 in our final equation $x = (-ln(0.05))/\lambda $
+
+```{r}
+exp_05 <- (-log(0.95))/fit$estimate
+exp_95 <- (-log(0.05))/fit$estimate
+
+glue("The 5th percentile for our exponential pdf is {signif(exp_05,5)} sq ft while the 95th percentile is {signif(exp_95,5)} sq ft")
+```
+
+Also generate a 95% confidence interval from the empirical data, assuming normality.
+
+We have a fairly tight interval for our mean as our data is tightly grouped together besides the outliers on the right.
+
+```{r}
+a <- mean(df_train_subset$LotArea, na.rm=TRUE)
+s <- sd(df_train_subset$LotArea, na.rm = TRUE)
+n <- length(df_train_subset$LotArea)
+error <- qnorm(0.975)*s/sqrt(n)
+glue("The 95% confidence interval for the mean from our empirical data is between {signif(a-error,5)} sq ft and {signif(a+error,5)} sq ft")
+```
+
+Finally, provide the empirical 5th percentile and 95th percentile of the data.  Discuss.
+
+In comparison to the distribution of our exponential function we see a mirroring of what can be seen in the histogram. The lowest percentile is much higher in our real data while the highest percentile is much lower. This tells us that our data is grouped closer to normal than the exponential distribution at least.
+
+```{r}
+quant_e <- quantile(df_train_subset$LotArea, prob = c(0.05,0.95), na.rm = TRUE)
+glue("The 5th percentile for our exponential pdf is {signif(quant_e[1],5)} sq ft while the 95th percentile is {signif(quant_e[2],5)} sq ft")
+```
+
+## Multiple Regression Modeling
+
+### Data Processing
+
+Build some type of multiple regression  model and submit your model to the competition board.
+
+Although we have already done some subsetting on the training data, we have discovered that some of the factors we picked just from the description don't match up very well in correlating to SalePrice which would likely lead them to being poor predictor variables. Here we want to create a new subset of data that utilizes the quantitative variables which have at least a 0.5 correlation with SalePrice.
+
+```{r}
+corr_mat_2 <- df_train %>%
+  select(where(is.numeric)) %>%
+  na.omit() %>%
+  cor()
+
+corr_df_2 <- data.frame(corr_mat_2[,'SalePrice'])
+colnames(corr_df_2) <- c("R")
+
+(corr_df_2 <- corr_df_2 %>% 
+  filter(R != 1, R > 0.5) %>%
+  arrange(desc(abs(R))))
+```
+
+After determining the 11 quantitative factors with high correlations with SalePrice, we take these and pairplot them to determine which ones are colinear so we can prune those away as well. Our criteria for a variable being colinear will be having a 0.6 or greater correlation with another row.
+
+```{r}
+df_train %>%
+  select(SalePrice,row.names(corr_df_2)) %>%
+  na.omit() %>%
+  cor()
+```
+We individually take out one column that is deemed colinear and then reanalyze the correlation matrix until we get the end result below:
+
+```{r}
+pruning <- c( "GarageYrBlt", "TotRmsAbvGrd", "YearBuilt", "FullBath", "1stFlrSF", "GarageArea")
+df_train %>%
+  select(SalePrice,row.names(corr_df_2), -all_of(pruning)) %>%
+  na.omit() %>%
+  cor()
+```
+
+
+After deciding on the quantitative variables, we add in the categorical variables that we believe will be impactful to the linear model as well.
+
+```{r}
+df_train_subset <- df_train %>%
+  select(SalePrice, MSZoning, Utilities, BldgType, HouseStyle, CentralAir, row.names(corr_df_2), -all_of(pruning)) %>%
+  na.omit()
+df_train_subset %>%
+  head()
+```
+
+Next we rerun processing we had previously done for removing outliers except this time we apply it to the whole dataframe.
+
+```{r, warning=FALSE}
+df_train_subset <- df_train_subset %>% 
+  mutate(across(
+    where(is.numeric),
+    ~ ifelse(
+      abs(as.numeric(scale(.x))) > 3,
+      mean(cur_column(), na.rm = TRUE), 
+      .x
+    )
+  )) %>%
+  na.omit()
+```
+
+### Model Building
+
+Now we are ready to begin creating our multiple linear regression model with all the variables we have selected. Once we have our initial model, we will utilize stepwise backward-elimination.
+
+```{r}
+initial_lm <- lm(SalePrice ~ ., data = df_train_subset)
+summary(initial_lm)
+```
+
+Provide your complete model summary and results with analysis.
+
+Once we have no more variables that we can remove without removing any coefficients that are below a significance of 0.05, we have the regression model that we are going to use below.
+
+```{r}
+final_lm <- lm(SalePrice ~ . -CentralAir -Utilities, data = df_train_subset)
+summary(final_lm)
+```
+
+### Model Analysis
+
+Overall we end up with an F-statistic of 346.6 which computes into a p-value of <2.2e-16. This means that our regression model allows for prediction models that fit better than random chance almost all of the time. Since this is a multiple linear regression model, the p-values are different for each variable. We can see that many of our variables have P values better than an alpha of 0.01, which means they should be good predictors for our model. Some insignificant coefficients are left in such as MSZoningRM because the other coefficients of the factors are still significant. Our best predictors are OverallQual and GrLivArea as they have the largest t values.
+
+Our Adjusted R^2 of 0.8293 tells us that this model will only account for about 83% of variation within the data which is a decent amount of variation accounted for. Additionally, our residual standard error of 27,440 tells us that there is a standard deviation of $27,440 between the predictions and the actual data. A pretty sizable chunk of variation between the predicted and actual prices.
+
+Examining the information regarding the residuals we can determine that the residuals do follow a roughly Gaussian distribution here. The median is close to $0. Additionally, the first and third quartile are close in magnitudes along with the minimum and maximum.
+
+```{r}
+autoplot(final_lm)
+```
+
+\ By looking at the scatterplot above we know that the assumption of linearity is violated, there is a slight but clear nonlinear trend in the residuals vs fitted graph. It seems the residuals are following a slight parabolic distribution.
+
+There is also a slight heteroskedastic spread, but not enough that I would say violates our assumption of it for regression.
+
+It is the same with normality in that the Q-Q plot shows mostly normal residuals besides the extreme ends.
+
+For the assumption of covariance, we had already checked this with the correlation matrix in the beginning and can say to have satisfied it.
+
+### Model Testing
+
+Finally we create a CSV to submit to Kaggle to test our results.
+
+```{r}
+df_test_submit <- df_test %>%
+  select(Id)
+df_test_submit$SalePrice <- predict(final_lm, df_test)
+df_test_submit <- df_test_submit %>%
+  mutate_at(vars(SalePrice),~ifelse(is.na(.x), mean(.x, na.rm = TRUE), .x))
+write_csv(df_test_submit, "kagglesubmission.csv")
+```
+
+We upload our csv through our Kaggle account TAhamad and end up getting a pretty bad normalized root mean square error score of 0.56250 as shown below:
+
+![scoring](https://raw.githubusercontent.com/alu-potato/DATA605/main/Final%20Project/KaggleSubmissionResult.png)
